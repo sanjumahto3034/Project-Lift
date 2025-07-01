@@ -8,6 +8,7 @@ A working Unity demo showcasing an interactive lift (elevator) system with playe
 
 - ✅ Direction-based Lift Call & Movement
 - ✅ Door Open/Close Animation
+- ✅ Auto door open when collied with player
 - ✅ Player Interaction System (Raycast-based)
 - ✅ Character Controller for Player Movement
 - ✅ UI Mode Toggle for Cursor-based UI
