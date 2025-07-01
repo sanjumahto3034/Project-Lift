@@ -77,5 +77,3 @@ Handles:
 ![Lift In Use](doc/img_2.png)
 
 ---
-
-## 📂 Project Structure Suggestion
