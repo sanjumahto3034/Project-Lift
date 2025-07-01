@@ -25,6 +25,7 @@ public class PlayerControl : MonoBehaviour
     [SerializeField] private GameObject _interactObjectShow;
     private IInteract _interactableObject = null;
     private bool _isInUIMode;
+    private bool isRunning;
     private void Awake()
     {
         characterController = GetComponent<CharacterController>();
@@ -65,8 +66,16 @@ public class PlayerControl : MonoBehaviour
             return;
         }
         float value = context.ReadValue<float>();
+
         jumpPressed = value > 0;
 
+    }
+    public void OnRun(InputAction.CallbackContext context)
+    {
+        if (_isInUIMode)
+            return;
+        float value = context.ReadValue<float>();
+        isRunning = value > 0;
     }
 
     void Start()
@@ -131,7 +140,6 @@ public class PlayerControl : MonoBehaviour
     {
         Vector3 forward = transform.TransformDirection(Vector3.forward);
         Vector3 right = transform.TransformDirection(Vector3.right);
-        bool isRunning = Keyboard.current.leftShiftKey.isPressed;
 
         float curSpeedX = -(isRunning ? runningSpeed : walkingSpeed) * moveInput.y;
         float curSpeedY = -(isRunning ? runningSpeed : walkingSpeed) * moveInput.x;
