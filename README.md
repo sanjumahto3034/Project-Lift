@@ -57,15 +57,14 @@ Handles:
 
 ## 🛠️ Requirements
 
-- Unity 2021.3 or newer
-- Input System Package (enabled)
+- Unity 6000.0.0 or newer
+- New Input System Package (enabled)
 - Tag `"Lift"` must be assigned to all lift platforms
 
 ---
 
 ## 📝 Notes
 
-- Make sure lift movement scripts interpolate smoothly (e.g., via coroutine).
 - Player is synced with moving lift using platform delta movement logic (not parenting).
 - Cursor lock state is managed via toggle for gameplay vs UI interaction modes.
 
