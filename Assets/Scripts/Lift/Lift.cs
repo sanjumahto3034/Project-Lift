@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System;
+using TMPro;
 
 
 #if UNITY_EDITOR
@@ -49,20 +50,25 @@ public class Lift : MonoBehaviour
     [SerializeField] private Transform _leftDoor;
     [SerializeField] private Transform _rightDoor;
     [SerializeField] private LiftManager _liftManager;
-    [SerializeField] private float liftSpeed = 2.0f; // Units per second
+    [SerializeField] private float liftSpeed = 2.0f;
 
     public bool IsWorking { get; private set; } = false;
     public LiftMoveDirection CurrentDirection = LiftMoveDirection.None;
 
-    private SortedSet<int> upQueue = new();
-    private SortedSet<int> downQueue = new(Comparer<int>.Create((a, b) => b.CompareTo(a))); // Descending
     public Action<int> onFloorReach;
+    public Action<int> onFloorNumberUpdate;
+
+    private SortedSet<int> upQueue = new();
+    private SortedSet<int> downQueue = new(Comparer<int>.Create((a, b) => b.CompareTo(a)));
 
     [SerializeField] private GameObject _obstacleDector;
+    [SerializeField] private TMP_Text _liftNumber;
     private void Awake()
     {
         _obstacleDector.SetActive(false);
+        onFloorNumberUpdate += (int id) => _liftNumber.text = id.ToString();
     }
+
     public void LiftCall(int floorId, LiftMoveDirection direction)
     {
         if (!IsWorking && floorId == FloorId)
@@ -90,7 +96,7 @@ public class Lift : MonoBehaviour
 
         if (floorId > FloorId)
             upQueue.Add(floorId);
-        else
+        else if (floorId < FloorId)
             downQueue.Add(floorId);
 
         if (!IsWorking)
@@ -103,84 +109,125 @@ public class Lift : MonoBehaviour
 
         while (upQueue.Count > 0 || downQueue.Count > 0)
         {
-            int nextFloor = -1;
-
-            if (CurrentDirection == LiftMoveDirection.Up || CurrentDirection == LiftMoveDirection.None)
-            {
-                if (upQueue.Count > 0)
-                {
-                    nextFloor = upQueue.Min;
-                    upQueue.Remove(nextFloor);
-                    CurrentDirection = LiftMoveDirection.Up;
-                }
-                else if (downQueue.Count > 0)
-                {
-                    nextFloor = downQueue.Max;
-                    downQueue.Remove(nextFloor);
-                    CurrentDirection = LiftMoveDirection.Down;
-                }
-            }
-            else if (CurrentDirection == LiftMoveDirection.Down)
-            {
-                if (downQueue.Count > 0)
-                {
-                    nextFloor = downQueue.Max;
-                    downQueue.Remove(nextFloor);
-                    CurrentDirection = LiftMoveDirection.Down;
-                }
-                else if (upQueue.Count > 0)
-                {
-                    nextFloor = upQueue.Min;
-                    upQueue.Remove(nextFloor);
-                    CurrentDirection = LiftMoveDirection.Up;
-                }
-            }
-
-            if (nextFloor != -1)
-                yield return StartCoroutine(eGoToFloor(nextFloor));
+            int? targetFloor = GetNextTargetFloor();
+            if (targetFloor.HasValue)
+                yield return StartCoroutine(eGoToFloorDynamic(targetFloor.Value));
+            else
+                break;
         }
 
         IsWorking = false;
         CurrentDirection = LiftMoveDirection.None;
     }
 
-    private IEnumerator eGoToFloor(int floorId)
+    private int? GetNextTargetFloor()
     {
-        if (floorId < 0 || floorId >= _liftManager.NoOfFloor)
+        if (CurrentDirection == LiftMoveDirection.None)
         {
-            Debug.LogWarning("Invalid floor ID.");
-            yield break;
+            if (upQueue.Count > 0)
+            {
+                CurrentDirection = LiftMoveDirection.Up;
+                return upQueue.Min;
+            }
+            else if (downQueue.Count > 0)
+            {
+                CurrentDirection = LiftMoveDirection.Down;
+                return downQueue.Max;
+            }
+        }
+        else if (CurrentDirection == LiftMoveDirection.Up)
+        {
+            foreach (int floor in upQueue)
+                if (floor > FloorId)
+                    return floor;
+
+            if (downQueue.Count > 0)
+            {
+                CurrentDirection = LiftMoveDirection.Down;
+                return downQueue.Max;
+            }
+        }
+        else if (CurrentDirection == LiftMoveDirection.Down)
+        {
+            foreach (int floor in downQueue)
+                if (floor < FloorId)
+                    return floor;
+
+            if (upQueue.Count > 0)
+            {
+                CurrentDirection = LiftMoveDirection.Up;
+                return upQueue.Min;
+            }
         }
 
-        if (floorId == FloorId)
-        {
-            OpenDoor();
-            yield break;
-        }
-
+        return null;
+    }
+    private IEnumerator eGoToFloorDynamic(int targetFloor)
+    {
         Vector3 startPos = transform.position;
-        Vector3 targetPos = new Vector3(
-            startPos.x,
-            _liftManager.FirstFloorPoint.y + (_liftManager.RoomHeight * floorId),
-            startPos.z
-        );
-
-        float distance = Vector3.Distance(startPos, targetPos);
-        float duration = distance / liftSpeed;
+        Vector3 endPos = new Vector3(startPos.x, _liftManager.FirstFloorPoint.y + (_liftManager.RoomHeight * targetFloor), startPos.z);
+        float duration = Vector3.Distance(startPos, endPos) / liftSpeed;
         float elapsed = 0f;
+
+        onFloorNumberUpdate?.Invoke(FloorId); // Immediate update when starting movement
 
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / duration);
-            transform.position = Vector3.Lerp(startPos, targetPos, t);
+            transform.position = Vector3.Lerp(startPos, endPos, t);
+
+            int liveFloor = GetClosestFloorToCurrentPosition();
+            onFloorNumberUpdate?.Invoke(liveFloor); // 🔄 Dynamic update while moving
+
+            if (CurrentDirection == LiftMoveDirection.Up && upQueue.Contains(liveFloor) && liveFloor > FloorId && liveFloor < targetFloor)
+            {
+                upQueue.Remove(liveFloor);
+                yield return StartCoroutine(eGoToFloorDynamic(liveFloor));
+                yield break;
+            }
+            else if (CurrentDirection == LiftMoveDirection.Down && downQueue.Contains(liveFloor) && liveFloor < FloorId && liveFloor > targetFloor)
+            {
+                downQueue.Remove(liveFloor);
+                yield return StartCoroutine(eGoToFloorDynamic(liveFloor));
+                yield break;
+            }
+
             yield return null;
         }
 
-        transform.position = targetPos;
-        FloorId = floorId;
-        Debug.Log($"Lift reached floor {floorId}");
+        transform.position = endPos;
+        FloorId = targetFloor;
+
+        onFloorNumberUpdate?.Invoke(FloorId); // Final update when target reached
+        Debug.Log($"Lift reached floor {targetFloor}");
+
+        if (CurrentDirection == LiftMoveDirection.Up)
+            upQueue.Remove(targetFloor);
+        else
+            downQueue.Remove(targetFloor);
+
         OpenDoor();
+    }
+
+    private int GetClosestFloorToCurrentPosition()
+    {
+        float liftY = transform.position.y;
+        float minDistance = float.MaxValue;
+        int closestFloor = FloorId;
+
+        for (int i = 0; i < _liftManager.NoOfFloor; i++)
+        {
+            float floorY = _liftManager.FirstFloorPoint.y + (_liftManager.RoomHeight * i);
+            float dist = Mathf.Abs(floorY - liftY);
+            if (dist < minDistance)
+            {
+                minDistance = dist;
+                closestFloor = i;
+            }
+        }
+
+        return closestFloor;
     }
 
     public void OpenDoor()
@@ -208,6 +255,7 @@ public class Lift : MonoBehaviour
             _rightDoor.localScale = new Vector3(Mathf.Max(0, scale), 1, 1);
             yield return null;
         }
+
         _leftDoor.localScale = Vector3.zero;
         _rightDoor.localScale = Vector3.zero;
         yield return new WaitForSeconds(3f);
@@ -253,6 +301,23 @@ public class Lift : MonoBehaviour
                 lift.OpenDoor();
             if (GUILayout.Button(nameof(lift.CloseDoor), GUILayout.Height(30)))
                 lift.CloseDoor();
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.green;
+        foreach (int f in upQueue)
+        {
+            Vector3 pos = new Vector3(transform.position.x + 1, _liftManager.FirstFloorPoint.y + (_liftManager.RoomHeight * f), transform.position.z);
+            Gizmos.DrawWireCube(pos, Vector3.one * 0.5f);
+        }
+
+        Gizmos.color = Color.red;
+        foreach (int f in downQueue)
+        {
+            Vector3 pos = new Vector3(transform.position.x - 1, _liftManager.FirstFloorPoint.y + (_liftManager.RoomHeight * f), transform.position.z);
+            Gizmos.DrawWireCube(pos, Vector3.one * 0.5f);
         }
     }
 #endif
