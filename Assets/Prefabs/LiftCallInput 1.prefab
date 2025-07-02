@@ -584,7 +584,7 @@ GameObject:
   - component: {fileID: 2140183603721019673}
   - component: {fileID: 622458672572252158}
   m_Layer: 0
-  m_Name: LiftCallInput
+  m_Name: LiftCallInput 1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
